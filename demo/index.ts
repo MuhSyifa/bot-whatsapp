@@ -7,6 +7,7 @@ const fs = require('fs');
 const uaOverride = 'WhatsApp/2.16.352 Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Safari/605.1.15';
 const tosBlockGuaranteed = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/79.0.3945.88 Safari/537.36";
 const ON_DEATH = require('death');
+//const { phoneNumberFormatter } = require('./helpers/formatter');
 let globalClient:Client;
 const express = require('express')
 
@@ -88,12 +89,23 @@ app.listen(PORT, function () {
 
     client.onAddedToGroup(newGroup => console.log('Added to new Group', newGroup.id));
 
-    client.onIncomingCall(call=>console.log('newcall',call));
+    client.onIncomingCall(async call=>{
+      console.log('newcall',call);
+
+      let formatted = call.peerJid.replace(/\D/g, '');
+
+      if (formatted.startsWith('0')) {
+        formatted = '62' + formatted.substr(1);
+      }
+
+      const message = 'Ada Panggilan Masuk Dari '+formatted+'';
+
+      const sendText = await client.sendText(call.peerJid,message);
+    });
 
 
     const prods = await client.getBusinessProfilesProducts(me.wid)
     console.log(prods)
-
 
   // client.onParticipantsChanged("XXXXXXXX-YYYYYYYY@g.us", (participantChangedEvent:any) => console.log("participant changed for group", participantChangedEvent));
   
@@ -116,93 +128,240 @@ app.listen(PORT, function () {
   client.onMessage(async message => {
     try {
 
-    const mp3_message_id = await client.sendAudio(message.from,'https://file-examples-com.github.io/uploads/2017/11/file_example_MP3_700KB.mp3', null)
-    console.log("start -> mp", mp3_message_id)
+      //const mp3_message_id = await client.sendAudio(message.from,'https://file-examples-com.github.io/uploads/2017/11/file_example_MP3_700KB.mp3', null)
+      //console.log("start -> mp", mp3_message_id)
 
-    const isConnected = await client.isConnected();
-    console.log("TCL: start -> isConnected", isConnected)
-    console.log(message.body, message.id, message?.quotedMsgObj?.id);
-    if (message.mimetype) {
-      const filename = `${message.t}.${mime.extension(message.mimetype)}`;
+      const isConnected = await client.isConnected();
+      console.log("TCL: start -> isConnected", isConnected)
+      console.log(message.body, message.id, message.type, message?.quotedMsgObj?.id);
 
-      // if it is a sticker, you need to run this.
-      let mediaData;
-      if( message.type==='sticker') {
-        //getStickerDecryptable is an insiders feature! 
-        let stickerDecryptable = await client.getStickerDecryptable(message.id);
-        if(stickerDecryptable) mediaData = await decryptMedia(stickerDecryptable, uaOverride);
-      } else {
-        mediaData = await decryptMedia(message, uaOverride);
+      if (message.type==='sticker') 
+      {
+          const sticker_from_url_gif_id = await client.sendStickerfromUrl(message.from, "https://i.giphy.com/media/yJil9u57ybQ9movc6E/source.gif")
+          console.log("start -> reply chat type sticker", sticker_from_url_gif_id)
       }
-      if(message.type==='video') {
-          const mp4_as_sticker = await client.sendMp4AsSticker(message.from,mediaData);
-          console.log("start -> mp4_as_sticker", mp4_as_sticker)
+      else if (message.type==='image')
+      {
+          if (message.mimetype) 
+          {
+            const filename = `${message.t}.${mime.extension(message.mimetype)}`;
+            let mediaData  = await decryptMedia(message, uaOverride);
+            const image = await client.sendImage(
+                            message.from,
+                            `data:${message.mimetype};base64,${mediaData.toString('base64')}`,
+                            filename,
+                            `You just sent me this ${message.type}`
+                          );
+            console.log("start -> reply chat type image", image);
+          }
       }
-      // you can send a file also with sendImage or await client.sendFile
-      await client.sendImage(
-        message.from,
-        `data:${message.mimetype};base64,${mediaData.toString('base64')}`,
-        filename,
-        `You just sent me this ${message.type}`
-      );
-      
-      //send the whole data URI so the mimetype can be checked.
-      await client.sendImageAsSticker(message.from, `data:${message.mimetype};base64,${mediaData.toString('base64')}`)
-      //get this numbers products
-      // const products = await client.getBusinessProfilesProducts(message.to);
+      else if (message.type==='video')
+      {
+          const filename = `${message.t}.${mime.extension(message.mimetype)}`;
+          let mediaData  = await decryptMedia(message, uaOverride);
+          //const mp4_as_sticker = await client.sendMp4AsSticker(message.from,mediaData);
+          const video = await client.sendImage(
+                            message.from,
+                            `data:${message.mimetype};base64,${mediaData.toString('base64')}`,
+                            filename,
+                            `You just sent me this ${message.type}`
+                          );
+          console.log("start -> reply chat type video", video);
+      }
+      else if (message.type==='document' || message.type==='audio')
+      {
+          const filename = `${message.t}.${mime.extension(message.mimetype)}`;
+          const mediaData = await decryptMedia(message);
+          const imageBase64 = `data:${message.mimetype};base64,${mediaData.toString(
+            'base64'
+          )}`;
 
-      // //send a product from this number to that number
-      //  await client.sendImageWithProduct(
-      //   `data:${message.mimetype};base64,${mediaData.toString('base64')}`,
-      //   message.from,
-      //   'check out this product',
-      //   message.to,
-      //   products[0].id)
+          await client.sendFile(
+            message.from,
+            imageBase64,
+            filename,
+            `You just sent me this ${message.type}`
+          );
+      }
+      else if (message.type==='ptt')
+      {
+          const mp3_message_id = await client.sendAudio(message.from,'https://file-examples-com.github.io/uploads/2017/11/file_example_MP3_700KB.mp3', null)
+          console.log("start -> voice", mp3_message_id);
+      }
+      else if (message.type==="location") 
+      {
+        if(message.shareDuration) 
+          console.log('This user has started sharing their live location', message.author || message.from)
+          console.log("TCL: location -> message", message.lat, message.lng, message.loc)
+          await client.sendLocation(message.from, `${message.lat}`, `${message.lng}`, `Youre are at ${message.loc}`)
+      }
+      else
+      {
+          if (message.body === 'Hi') 
+          {
+              const send = await client.sendText(message.from, '👋 Hello!');
 
-        // await client.forwardMessages(message.from,message,false);
+              console.log("start -> reply from message Hi", send);
+          }
+          else if (message.body==='selamat pagi') 
+          {
+              const sendText = await client.sendText(message.from,'Good Morning');
+              console.log("start -> reply from message selamat pagi", sendText);
 
-        await client.forwardMessages(message.from,message.id,false);
-      fs.writeFileSync(filename, mediaData, function(err) {
-        if (err) {
-          return console.log(err);
-        }
-        console.log('The file was saved!');
-      });
+              console.log("start -> message from", message.from);
+          }
+          else if (message.body==='selamat sore') 
+          {
+              const sendText = await client.sendText(message.from,'Good Afternoon');
+              console.log("start -> reply from message selamat sore", sendText);
 
-      /**
-       * You can also send the file as a relative file reference. The library will automatically open the file and get the dataUrl
-       */
-      const message_id_from_file = await client.sendImage(message.from,
-        './'+filename,
-        filename,
-        'from file',
-        null,
-        true,
-        false
-        )
-      console.log("start -> message_id", message_id_from_file)
+              console.log("start -> message from", message.from);
 
-      /**
-       * Now you can send an animated gif via url
-       */
-      const sticker_from_url_gif_id = await client.sendStickerfromUrl(message.from, "https://i.giphy.com/media/yJil9u57ybQ9movc6E/source.gif")
-      console.log("start -> sticker_from_url_gif_id", sticker_from_url_gif_id)
+          }
+          else if (message.body==='send contact') 
+          {
+              let formatted = message.from.replace(/\D/g, '');
+              
+              const sendContact = await client.sendContact(message.from,"6289660846315@c.us");
+              console.log("start -> reply send contact", sendContact);
+          }
+          else if (message.body==='delete message') 
+          {
+              //const sendContact = await client.sendContact(message.from,"6289660846315@c.us");
+              const deleteMessage = await client.deleteMessage(message.from,message.id,false);
+              console.log("start -> delete message", deleteMessage);
+              const sendText = await client.sendText(message.from,'Pesan Berhasil dihapus di nomor Bot WA');
+              console.log("start -> send message", sendText);
+          }
+          else if (message.body==='send link youtube')
+          {
+              const sendlink = await client.sendYoutubeLink(message.from, "https://www.youtube.com/watch?v=VELru-FCWDM&ab_channel=Academind");
+              console.log("start -> reply send link youtube", sendlink);
+          }
+          else if (message.body==='last seen')
+          {
+              const lastSeen = await client.getLastSeen(message.from);
+              console.log("start -> reply get lastSeen", lastSeen);
+          }
+          else if (message.body==='create group')
+          {
+              const createGroup = await client.createGroup('New group','6285871176003@c.us');
+              console.log("start -> create group",createGroup);
 
-    } else if (message.type==="location") {
-      if(message.shareDuration) console.log('This user has started sharing their live location', message.author || message.from)
-      console.log("TCL: location -> message", message.lat, message.lng, message.loc)
-      await client.sendLocation(message.from, `${message.lat}`, `${message.lng}`, `Youre are at ${message.loc}`)
-    } else {
-      // var sentMessageId = await client.sendText(message.from, message.body);
-      // console.log("start -> sentMessageId", sentMessageId)
-      // //send a giphy gif
-      //   await client.forwardMessages(message.from,message,false);
-      // await client.sendGiphy(message.from,'https://media.giphy.com/media/oYtVHSxngR3lC/giphy.gif','Oh my god it works');
-      // console.log("TCL: start -> message.from,message.body,message.id.toString()", message.from,message.body,message.id.toString())
-      // await client.reply(message.from,message.body,message);
-    }
+              const getGroupInviteLink = await client.getGroupInviteLink(createGroup.gid._serialized);
+              console.log("start -> getGroupInviteLink",getGroupInviteLink);
+
+              const sendText = await client.sendText(message.from,getGroupInviteLink);
+              console.log("start -> send message", sendText); 
+
+              //let member = message.chatId.toString;
+              //let member = `${message.chatId}`;
+              // if(message.chatId)
+              //const addmember = await client.addParticipant(createGroup.gid._serialized, `${message.from}`);
+              //console.log("start -> add member group",addmember);
+          }
+          else if (message.body==='get all group') 
+          {
+              const getallGroup = await client.getAllGroups().then(chats => {
+                
+                const nameGroup = [];
+
+                for(let i=0; i<chats.length; i++){
+                  nameGroup.push(chats[i].name)
+                }
+
+                const msg = "List Nama Group Nomor WA: "+nameGroup.join(", ");
+
+                const sendText = client.sendText(message.from,msg);
+                console.log("start -> get all group", sendText);
+
+              });
+          }
+          else if (message.body==='get contact') 
+          {
+              const getContact = await client.getContact('6289660846315@c.us');
+
+              const msg = "Nama Kontak: "+getContact.name;
+
+              const sendText = client.sendText(message.from,msg);
+              console.log("start -> get contact", sendText);
+          }
+          else if (message.body==='get all chat') 
+          {
+              const getallChat = await client.getAllChats().then(chat =>{
+                  const namaChat = [];
+
+                  for(let i=0; i<chat.length; i++){
+                    namaChat.push(chat[i].name)
+                  }
+
+                  const msg = "List All Chat Dari: "+namaChat.join(", ");
+
+                  const sendText = client.sendText(message.from,msg);
+                  console.log("start -> get all chat", sendText);
+              });
+
+              //console.log("start -> get all chat", getallChat);
+          }
+          else if (message.body==='get baterai level') 
+          {
+              const bateraiLevel = await client.getBatteryLevel();
+
+              const msg = "Baterai level Nomor Bot WA: "+bateraiLevel+"%";
+
+              const sendText = client.sendText(message.from,msg);
+
+              console.log("start -> get baterai level", sendText);
+          }
+          else if (message.body==='get member group') 
+          {
+              const getGroupMembersId = await client.getGroupMembersId('6285871176003-1612765463@g.us');
+
+              const msg = "List Member dari Group (Coba new group) : "+getGroupMembersId.join(", ");
+
+              const sendText = client.sendText(message.from,msg);
+
+              console.log("start -> get member group", sendText);   
+          }
+          else if (message.body==='forward message') 
+          {
+              const forward = client.forwardMessages(message.from,message.id,false);
+              console.log('forward message',forward);
+          }
+          // else if (message.body==='send giphy')
+          // {
+          //     const send_giphy = await client.sendGiphy(message.from,'https://media.giphy.com/media/oYtVHSxngR3lC/giphy.gif','Oh my god it works');
+          //     console.log('send giphy',send_giphy);
+          // }
+          else if (message.body==='add member group')
+          {
+              const addmember = await client.addParticipant('6285871176003-1612765463@g.us','6289660846315@c.us');
+              console.log("start -> add member group",addmember);
+          }
+          else if (message.body==='remove member group')
+          {
+              const removemember = await client.removeParticipant('6285871176003-1612765463@g.us','6289660846315@c.us');
+              console.log("start -> add remove group",removemember);
+          }
+          else if (message.body==='promote member group')
+          {
+              const promotemember = await client.promoteParticipant('6285871176003-1612765463@g.us','6289660846315@c.us');
+              console.log("start -> promote Admin group",promotemember);
+          }
+          else if (message.body==='demote member group')
+          {
+              const demotemember = await client.demoteParticipant('6285871176003-1612765463@g.us','6289660846315@c.us');
+              console.log("start -> demote Admin group",demotemember);
+          }
+          else if (message.body==='group info') 
+          {
+              const getGroup = await client.getGroupInfo('6285871176003-1612765463@g.us');
+              console.log("start -> get group info",getGroup);
+          }
+      }
+
     } catch (error) {
-    console.log("TCL: start -> error", error)
+      console.log("TCL: start -> error", error)
     }
   });
 
@@ -231,6 +390,7 @@ create({
   qrTimeout:0,   //set to 0 to wait forever for a qr scan
   authTimeout:0, //set to 0 to wait forever for connection to phone
   killProcessOnBrowserClose: true,
+  killProcessOnTimeout: true,
   autoRefresh:true, //default to true
   safeMode: true,
   disableSpins: true,
@@ -241,7 +401,7 @@ create({
   },
   popup: 3012,
   defaultViewport: null,
-  // cacheEnabled:false,
+  cacheEnabled:false,
   // devtools:true,
   //OR
   // devtools:{
